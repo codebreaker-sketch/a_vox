@@ -12,13 +12,14 @@ from firebase_admin import credentials, firestore, storage
 import json
 
 # --- Firebase Init ---
-# Firebase config load karo
 firebase_config = st.secrets["firebase"]
+
+# Convert dict to JSON and then load into credentials
+cred = credentials.Certificate(firebase_config)
 
 firebase_admin.initialize_app(cred, {
     "storageBucket": f"{firebase_config['project_id']}.appspot.com"
 })
-
 db = firestore.client()
 bucket = storage.bucket()
 
