@@ -12,25 +12,15 @@ from firebase_admin import credentials, firestore, storage
 import json
 
 # --- Firebase Init ---
-# if not firebase_admin._apps:
-#     # convert SecretsDict -> normal Python dict
-#     firebase_config = dict(st.secrets["firebase"])
-
-#     # fix private_key formatting if TOML added \n
-#     if "\\n" in firebase_config["private_key"]:
-#         firebase_config["private_key"] = firebase_config["private_key"].replace("\\n", "\n")
-
-#     # initialize
-#     cred = credentials.Certificate(firebase_config)
-#     firebase_admin.initialize_app(cred, {
-#         "storageBucket": f"{firebase_config['project_id']}.appspot.com"
-#     })
 if not firebase_admin._apps:
+    # convert SecretsDict -> normal Python dict
     firebase_config = dict(st.secrets["firebase"])
 
-    # Always ensure private_key is multiline
-    firebase_config["private_key"] = firebase_config["private_key"].replace("\\n", "\n")
+    # fix private_key formatting if TOML added \n
+    if "\\n" in firebase_config["private_key"]:
+        firebase_config["private_key"] = firebase_config["private_key"].replace("\\n", "\n")
 
+    # initialize
     cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred, {
         "storageBucket": f"{firebase_config['project_id']}.appspot.com"
