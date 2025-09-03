@@ -1,60 +1,60 @@
 import os
+import json
 import requests
 import time
 import google.generativeai as genai
 import streamlit as st
 import re
-# import pymongo
-# import gridfs
 from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, firestore, storage
-import json
+
+# Define UPLOAD_DIR for temporary file storage
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # --- Firebase Init ---
-firebase_config = st.secrets["firebase"]
+try:
+    firebase_config = st.secrets["firebase"]
+    if isinstance(firebase_config, str):
+        try:
+            firebase_config = json.loads(firebase_config)
+        except json.JSONDecodeError:
+            st.error("Error: firebase_config is a string but not valid JSON.")
+            st.stop()
+    required_fields = ["type", "project_id", "private_key", "client_email"]
+    if not all(field in firebase_config for field in required_fields):
+        st.error(f"Error: firebase_config is missing required fields: {required_fields}")
+        st.stop()
+    cred = credentials.Certificate(firebase_config)
+    if not firebase_admin.get_app():
+        firebase_admin.initialize_app(cred, {
+            "storageBucket": f"{firebase_config['project_id']}.appspot.com"
+        })
+    db = firestore.client()
+    bucket = storage.bucket()
+except Exception as e:
+    st.error(f"Firebase initialization failed: {e}")
+    st.stop()
 
-# Convert dict to JSON and then load into credentials
-cred = credentials.Certificate(firebase_config)
-
-firebase_admin.initialize_app(cred, {
-    "storageBucket": f"{firebase_config['project_id']}.appspot.com"
-})
-db = firestore.client()
-bucket = storage.bucket()
-
-# # --- Streamlit UI ---
-# st.title("Audio Upload to Firebase 🎶")
-
-# uploaded_file = st.file_uploader("Upload an audio file", type=["mp3", "wav"])
-
-# if uploaded_file:
-#     # Save file to Firebase Storage
-#     blob = bucket.blob(f"audios/{uploaded_file.name}")
-#     blob.upload_from_file(uploaded_file, content_type=uploaded_file.type)
-
-#     # Generate public URL
-#     url = blob.public_url
-
-#     # Save metadata to Firestore
-#     doc_ref = db.collection("audios").add({
-#         "filename": uploaded_file.name,
-#         "url": url,
-#         "content_type": uploaded_file.type
-#     })
-
-#     st.success("✅ File uploaded successfully!")
-#     st.write("Download link:", url)
-
-# -------------------------------
-# ASSEMBLYAI CONFIGURATION
-# -------------------------------
-ASSEMBLYAI_API_KEY = "b968b0d0ad9d4c88a87316567c6ca1db"
+# --- AssemblyAI Configuration ---
+try:
+    ASSEMBLYAI_API_KEY = st.secrets["assemblyai_api_key"]
+except KeyError:
+    st.error("AssemblyAI API key not found in secrets.")
+    st.stop()
 ASSEMBLYAI_API_URL = "https://api.assemblyai.com/v2"
 headers = {
     "authorization": ASSEMBLYAI_API_KEY,
     "content-type": "application/json"
 }
+
+# --- Gemini Configuration ---
+try:
+    GEMINI_API_KEY = st.secrets["gemini_api_key"]
+except KeyError:
+    st.error("Gemini API key not found in secrets.")
+    st.stop()
 
 def save_to_firebase(file_path, file_name, summary_text):
     # Upload file to Firebase Storage
@@ -151,20 +151,15 @@ def get_diarization_result(transcript_id):
             raise Exception("Diarization failed.")
         time.sleep(5)
 
-# NEW HELPER FUNCTION FOR TIMESTAMP CONVERSION
 def seconds_to_mmss(seconds):
     """Convert seconds to mm:ss format."""
     mins = int(seconds // 60)
     secs = int(seconds % 60)
     return f"{mins:02d}:{secs:02d}"
 
-# -------------------------------
-# GEMINI CONFIGURATION
-# -------------------------------
-
 def summarize_text_gemini(text, podcast_type="General"):
     """Summarize text using Gemini, tailored to podcast type."""
-    genai.configure(api_key="AIzaSyCL2IqaNvldvJ-960RM-BrIQEr5npq8dkA")
+    genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-1.5-flash")
 
     style_prompts = {
@@ -201,7 +196,7 @@ def summarize_text_gemini(text, podcast_type="General"):
 
 def chat_with_gemini(question, context, podcast_type="General"):
     """Answer questions in style tailored to podcast type."""
-    genai.configure(api_key="AIzaSyCL2IqaNvldvJ-960RM-BrIQEr5npq8dkA")
+    genai.configure(api_key=GEMINI_API_KEY)
     model = genai.GenerativeModel("gemini-1.5-flash")
 
     style_prompts = {
@@ -231,9 +226,7 @@ def chat_with_gemini(question, context, podcast_type="General"):
     response = model.generate_content(prompt)
     return response.text
 
-# -------------------------------
-# STREAMLIT APP - ENHANCED UI
-# -------------------------------
+# --- Streamlit App ---
 st.set_page_config(
     page_title="AURA VOX - Audio AI",
     page_icon="🎧",
@@ -241,7 +234,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# -- Updated CSS with new color scheme
+# Updated CSS with new color scheme
 st.markdown(
     """
     <style>
@@ -431,8 +424,6 @@ with st.sidebar:
     st.markdown("## ⚙️ Controls")
     st.markdown("Upload an audio file (mp3, wav, m4a, ogg) and click **Process Audio**.")
     st.divider()
-    st.caption("⚠️ Demo keys are embedded in the script. Use Streamlit secrets for production.")
-    st.divider()
     st.markdown("### Status")
     status_placeholder = st.empty()
     st.divider()
@@ -447,7 +438,7 @@ with left_col:
 
     podcast_type = st.selectbox(
         "Select Podcast Type",
-        ["General", "News", "Sports", "Comedy", "Technology", "Business", "Tech", "Education", "True Crime"]
+        ["General", "News", "Sports", "Comedy", "Technology", "Business", "Education", "True Crime"]
     )
     uploaded_file = st.file_uploader("Choose an audio file to upload", type=["mp3", "wav", "m4a", "ogg"])
     if uploaded_file is not None:
@@ -510,7 +501,7 @@ with left_col:
             with open(local_path, "wb") as f:
                 f.write(audio_data)
 
-            # Save to MongoDB
+            # Save to Firebase
             try:
                 save_to_firebase(local_path, uploaded_file.name, summary)
                 status_placeholder.success("✅ Audio + summary saved to Firebase successfully!")
@@ -644,4 +635,4 @@ with right_col:
     st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.markdown("Made with ❤️ — AssemblyAI + Gemini. Keep API keys private in production.")
+st.markdown("Made with ❤️ — AssemblyAI + Gemini.")
