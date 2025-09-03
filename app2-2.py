@@ -15,7 +15,6 @@ import json
 # Firebase config load karo
 firebase_config = st.secrets["firebase"]
 
-cred = credentials.Certificate(firebase_config)
 firebase_admin.initialize_app(cred, {
     "storageBucket": f"{firebase_config['project_id']}.appspot.com"
 })
