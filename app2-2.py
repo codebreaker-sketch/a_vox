@@ -16,25 +16,19 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # --- Firebase Init ---
 try:
     firebase_config = st.secrets["firebase"]
-    if isinstance(firebase_config, str):
-        try:
-            firebase_config = json.loads(firebase_config)
-        except json.JSONDecodeError:
-            st.error("Error: firebase_config is a string but not valid JSON.")
-            st.stop()
     required_fields = ["type", "project_id", "private_key", "client_email"]
     if not all(field in firebase_config for field in required_fields):
         st.error(f"Error: firebase_config is missing required fields: {required_fields}")
         st.stop()
     cred = credentials.Certificate(firebase_config)
-    if not firebase_admin.get_app():
+    if not firebase_admin.get_app(default_app=None):
         firebase_admin.initialize_app(cred, {
             "storageBucket": f"{firebase_config['project_id']}.appspot.com"
         })
     db = firestore.client()
     bucket = storage.bucket()
 except Exception as e:
-    st.error(f"Firebase initialization failed: {e}")
+    st.error(f"Firebase initialization failed: {e}\n\nStack trace:\n{traceback.format_exc()}")
     st.stop()
 
 # --- AssemblyAI Configuration ---
