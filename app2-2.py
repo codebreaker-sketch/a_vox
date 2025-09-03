@@ -14,7 +14,7 @@ import json
 # --- Firebase Init ---
 if not firebase_admin._apps:
     cred_dict = st.secrets["firebase"]
-    cred = credentials.Certificate(dict(cred_dict))
+    cred = credentials.Certificate(st.secrets["firebase"])
     firebase_admin.initialize_app(cred, {
         "storageBucket": f"{st.secrets['firebase']['project_id']}.appspot.com"
     })
