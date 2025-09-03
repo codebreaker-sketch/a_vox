@@ -4,23 +4,46 @@ import time
 import google.generativeai as genai
 import streamlit as st
 import re
-import pymongo
-import gridfs
+# import pymongo
+# import gridfs
 from datetime import datetime
+import firebase_admin
+from firebase_admin import credentials, firestore, storage
+import json
 
-# -------------------------------
-# LOCAL MONGODB CONFIGURATION
-# -------------------------------
-MONGO_URI = "mongodb://localhost:27017"
-DB_NAME = "audiobot"
+# --- Firebase Init ---
+if not firebase_admin._apps:
+    cred_dict = st.secrets["firebase"]
+    cred = credentials.Certificate(dict(cred_dict))
+    firebase_admin.initialize_app(cred, {
+        "storageBucket": f"{st.secrets['firebase']['project_id']}.appspot.com"
+    })
 
-client = pymongo.MongoClient(MONGO_URI)
-db = client[DB_NAME]
-fs = gridfs.GridFS(db)  # for storing audio files
-records_collection = db["audio_records"]  # for storing metadata (summary, trendy, key moments)
+db = firestore.client()
+bucket = storage.bucket()
 
-UPLOAD_DIR = "uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# # --- Streamlit UI ---
+# st.title("Audio Upload to Firebase 🎶")
+
+# uploaded_file = st.file_uploader("Upload an audio file", type=["mp3", "wav"])
+
+# if uploaded_file:
+#     # Save file to Firebase Storage
+#     blob = bucket.blob(f"audios/{uploaded_file.name}")
+#     blob.upload_from_file(uploaded_file, content_type=uploaded_file.type)
+
+#     # Generate public URL
+#     url = blob.public_url
+
+#     # Save metadata to Firestore
+#     doc_ref = db.collection("audios").add({
+#         "filename": uploaded_file.name,
+#         "url": url,
+#         "content_type": uploaded_file.type
+#     })
+
+#     st.success("✅ File uploaded successfully!")
+#     st.write("Download link:", url)
 
 # -------------------------------
 # ASSEMBLYAI CONFIGURATION
@@ -32,32 +55,30 @@ headers = {
     "content-type": "application/json"
 }
 
-def save_to_mongo(file_path, file_name, summary_text):
-    """Extract sections and save metadata + audio file to MongoDB."""
-    # Extract Trendy Content
+def save_to_firebase(file_path, file_name, summary_text):
+    # Upload file to Firebase Storage
+    blob = bucket.blob(f"uploads/{file_name}")
+    blob.upload_from_filename(file_path)
+    file_url = blob.public_url
+
+    # Extract Trendy Content + Key Moments
     trendy_match = re.search(r'##\s*Trendy Content\s*(.*?)(##\s*Key Moments|$)', summary_text, re.DOTALL)
     trendy_content = trendy_match.group(1).strip() if trendy_match else ""
 
-    # Extract Key Moments
     key_moments_match = re.search(r'##\s*Key Moments\s*(.*)', summary_text, re.DOTALL)
     key_moments = key_moments_match.group(1).strip() if key_moments_match else ""
 
-    # Save file to GridFS
-    with open(file_path, "rb") as f:
-        file_id = fs.put(f, filename=file_name)
-
-    # Save metadata
+    # Save metadata to Firestore
     record = {
         "filename": file_name,
-        "filepath": file_path,
-        "file_id": file_id,  # link to GridFS file
+        "file_url": file_url,
         "summary": summary_text,
         "trendy_content": trendy_content,
         "key_moments": key_moments,
         "timestamp": datetime.now()
     }
+    db.collection("audio_records").add(record)
 
-    records_collection.insert_one(record)
     return record
 
 def upload_audio(audio_data, filename):
@@ -490,10 +511,10 @@ with left_col:
 
             # Save to MongoDB
             try:
-                save_to_mongo(local_path, uploaded_file.name, summary)
-                status_placeholder.success("✅ Audio + summary saved to MongoDB successfully!")
+                save_to_firebase(local_path, uploaded_file.name, summary)
+                status_placeholder.success("✅ Audio + summary saved to Firebase successfully!")
             except Exception as e:
-                status_placeholder.error(f"MongoDB save failed: {e}")
+                status_placeholder.error(f"Firebase save failed: {e}")
                 
     st.markdown('</div>', unsafe_allow_html=True)
 
