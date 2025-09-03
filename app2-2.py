@@ -13,10 +13,11 @@ import json
 
 # --- Firebase Init ---
 if not firebase_admin._apps:
-    cred_dict = st.secrets["firebase"]
-    cred = credentials.Certificate(st.secrets["firebase"])
+    firebase_config = dict(st.secrets["firebase"])
+    firebase_config["private_key"] = firebase_config["private_key"].replace("\\n", "\n")
+    cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred, {
-        "storageBucket": f"{st.secrets['firebase']['project_id']}.appspot.com"
+        "storageBucket": f"{firebase_config['project_id']}.appspot.com"
     })
 
 db = firestore.client()
